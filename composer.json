@@ -2,7 +2,7 @@
     "name": "dsmgpos/lcipar",
     "description": "DSMG POS License Validation",
     "type": "project",
-    "license": "LGPL",
+    "license": "MIT",
     "authors": [{
         "name": "Salvatore Cahyo",
         "email": "salva@dsgroupmedia.com"
