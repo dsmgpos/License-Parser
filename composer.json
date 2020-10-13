@@ -2,15 +2,11 @@
     "name": "dsmgpos/lcipar",
     "description": "DSMG POS License Validation",
     "type": "project",
+    "license": "LGPL",
     "authors": [{
-            "name": "Rafael Goulart",
-            "email": "rafaelgou@gmail.com"
-        },
-        {
-            "name": "Oliver Lillie",
-            "email": "publicmail@buggedcom.co.uk"
-        }
-    ],
+        "name": "Salvatore Cahyo",
+        "email": "salva@dsgroupmedia.com"
+    }],
     "autoload": {
         "psr-4": {
             "": "src/",
