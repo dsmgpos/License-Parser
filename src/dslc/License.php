@@ -299,74 +299,6 @@ class License
         return true;
     }
 
-    /**
-     * registerInstall
-     *
-     * registers the install with the home server and if registration is
-     * excepted it then generates and installs the key.
-     *
-     * @param string $domain   The domain to register the license to
-     * @param number $start    The start time of the license, can be either
-     *                         the actuall time or the time span until the license is valid
-     * @param number $expireIn Number of seconds untill the license
-     *                         expires after start, or 'NEVER' to never expire
-     * @param array  $data     Array that contains the info to be validated
-     * @param string $dialhost Host name of the server to be contacted
-     * @param string $dialpath Path of the script for the data to be sent to
-     * @param number $dialport Port Number to send the data through
-     *
-     * @return string Returns the encrypted install validation
-     **/
-    public function registerInstall($domain, $start, $expireIn, $data, $dialhost, $dialpath, $dialport = '80')
-    {
-        // check to see if the class has been secured
-        $this->check_secure();
-
-        // check if key is alread generated
-        // TODO
-        if (@filesize($this->licensePath) > 4) {
-            return array('RESULT' => 'KEY_EXISTS');
-        }
-
-        $data = array('DATA' => $data);
-
-        // if the server matching is required then get the info
-        if ($this->useServer) {
-            // evaluate the supplied domain against the collected ips
-            if (!$this->compareDomainIp($domain, $this->ips)) {
-                return array('RESULT' => 'DOMAIN_IP_FAIL');
-            }
-            // check server uris
-            if (count($this->serverInfo) < $this->requiredUris) {
-                return array('RESULT' => 'SERVER_FAIL');
-            }
-            $data['SERVER']['MAC']    = $this->mac;
-            $data['SERVER']['PATH']   = $this->serverInfo;
-            $data['SERVER']['IP']     = $this->ips;
-            $data['SERVER']['DOMAIN'] = $domain;
-        }
-
-        // if use time restrictions
-        if ($this->useTime) {
-            $current = time();
-            $start   = ($current < $start) ? $start : $current+$start;
-            // set the dates
-            $data['DATE']['START'] = $start;
-            if ($expireIn === 'NEVER') {
-                $data['DATE']['SPAN']   = '~';
-                $data['DATE']['END']   = 'NEVER';
-            } else {
-                $data['DATE']['SPAN']   = $expireIn;
-                $data['DATE']['END']   = $start+$expireIn;
-            }
-        }
-        // includethe id for requests
-        $data['ID'] = md5($this->id2);
-        // post the data home
-        $data = $this->postData($dialhost, $dialpath, $data, $dialport);
-        // return the result and key if approved
-        return (empty($data['RESULT'])) ? array('RESULT' => 'SOCKET_FAILED') : $data;
-    }
 
     /**
      * generate
@@ -413,7 +345,7 @@ class License
      * @return array
      * @return array
      **/
-    protected function doValidate($license, $dialhome = false, $dialhost = "", $dialpath = "", $dialport = "80")
+    protected function doValidate($license)
     {
         //// check to see if the class has been secured
         //$this->check_secure();
@@ -458,17 +390,9 @@ class License
                 // passed all current test so license is ok
                 if (!isset($data['RESULT'])) {
                     // dial to home server if required
-                    if ($dialhome) {
-                        // create the details to send to the home server
-                        $stuffToSend = array();
-                        $stuffToSend['LICENSE_DATA'] = $data;
-                        $stuffToSend['LICENSE_DATA']['KEY'] = md5($license);
-                        // dial home
-                        $data['RESULT'] = $this->callHome($stuffToSend, $dialhost, $dialpath, $dialport);
-                    } else {
+                    
                         // result is ok all test passed, license is legal
                         $data['RESULT'] = 'OK';
-                    }
                 }
                 // data is returned for use
                 return $data;
@@ -483,57 +407,6 @@ class License
         return array('RESULT' => 'EMPTY');
     }
 
-    /**
-    * postData
-    *
-    * Posts data to and recieves data from dial home server. Returned info
-    * contains the dial home validation result
-    *
-    * @param string $host       Host name of the server to be contacted
-    * @param string $path       Path of the script for the data to be sent to
-    * @param array  $queryArray Array that contains the license key info to be validated
-    * @param number $port       Port Number to send the data through
-     *
-    * @return array Result of the dialhome validation
-    * @return string - SOCKET_FAILED will be returned if it was not possible to open a socket to the home server
-    **/
-    protected function postData($host, $path, $queryArray, $port = 80)
-    {
-        // generate the post query info
-        $query    = 'POSTDATA='.$this->encrypt($queryArray, 'HOMEKEY');
-        $query    .= '&MCRYPT='.$this->useMcrypt;
-        // init the return string
-        $return  = '';
-
-        // generate the post headers
-        $post     = "POST $path HTTP/1.1\r\n";
-        $post   .= "Host: $host\r\n";
-        $post   .= "Content-type: application/x-www-form-urlencoded\r\n";
-        $post   .= "Content-length: ".strlen($query)."\r\n";
-        $post   .= "Connection: close\r\n";
-        $post   .= "\r\n";
-        $post   .= $query;
-
-        // open a socket
-        $header = @fsockopen($host, $port);
-        if (!$header) {
-            // if the socket fails return failed
-            return array('RESULT' => 'SOCKET_FAILED');
-        }
-        @fputs($header, $post);
-        // read the returned data
-        while (!@feof($header)) {
-            $return .= @fgets($header, 1024);
-        }
-        fclose($header);
-
-        // seperate out the data using the delims
-        $leftpos = strpos($return, $this->begin2)+strlen($this->begin2);
-        $rightpos = strpos($return, $this->end2)-$leftpos;
-
-        // decrypt and return the data
-        return $this->decrypt(substr($return, $leftpos, $rightpos), 'HOMEKEY');
-    }
 
     /**
      * compareDomainIp
@@ -685,58 +558,6 @@ class License
         return $str;
     }
 
-    /**
-     * encrypt
-     *
-     * encrypts the key
-     *
-     * @param array  $srcArray The data array that contains the key data
-     * @param string $keyType  The type of the key to encrypt
-     *
-     * @return string Returns the encrypted string
-     **/
-    protected function encrypt($srcArray, $keyType = 'KEY')
-    {
-        $randAddOn = $this->generateRandomString(3);
-        // get the key
-        $key = $this->getKey($keyType);
-        $key = $randAddOn.$key;
-
-        // check to see if mycrypt exists
-        if ($this->useMcrypt) {
-            // openup mcrypt
-            $td = mcrypt_module_open($this->algorithm, '', 'ecb', '');
-            $iv = mcrypt_create_iv(mcrypt_enc_get_iv_size($td), MCRYPT_RAND);
-            // process the key
-            $key = substr($key, 0, mcrypt_enc_getKey_size($td));
-            // init mcrypt
-            mcrypt_generic_init($td, $key, $iv);
-
-            // encrypt data
-            // double base64 gets makes all the characters alpha numeric
-            // and gets rig of the special characters
-            $crypt   = mcrypt_generic($td, serialize($srcArray));
-
-            // shutdown mcrypt
-            mcrypt_generic_deinit($td);
-            mcrypt_module_close($td);
-        } else {
-            // if mcrypt doesn't exist use regular encryption method
-            // init the vars
-            $crypt = '';
-            $str = serialize($srcArray);
-
-            // loop through the str and encrypt it
-            for ($i = 1; $i <= strlen($str); $i++) {
-                $char     = substr($str, $i-1, 1);
-                $keychar   = substr($key, ($i % strlen($key))-1, 1);
-                $char     = chr(ord($char)+ord($keychar));
-                $crypt    .= $char;
-            }
-        }
-        // return the key
-        return $randAddOn.base64_encode(base64_encode(trim($crypt)));
-    }
 
     /**
      * decrypt
@@ -755,24 +576,6 @@ class License
         // get the key
         $key = $randAddOn.$this->getKey($keyType);
 
-        // check to see if mycrypt exists
-        if ($this->useMcrypt) {
-            // openup mcrypt
-            $td = mcrypt_module_open($this->algorithm, '', 'ecb', '');
-            $iv = mcrypt_create_iv(mcrypt_enc_get_iv_size($td), MCRYPT_RAND);
-            // process the key
-            $key = substr($key, 0, mcrypt_enc_getKey_size($td));
-            // init mcrypt
-            mcrypt_generic_init($td, $key, $iv);
-
-            // decrypt the data and return
-            $decrypt = @mdecrypt_generic($td, $str);
-
-            // shutdown mcrypt
-            mcrypt_generic_deinit($td);
-            mcrypt_module_close($td);
-        } else {
-            // if mcrypt doesn't exist use regular decryption method
             // init the decrypt vars
             $decrypt = '';
 
@@ -783,34 +586,9 @@ class License
                 $char     = chr(ord($char)-ord($keychar));
                 $decrypt  .= $char;
             }
-        }
         // return the key
         return @unserialize($decrypt);
     }
-
-    /**
-     * wrapLicense
-     *
-     * wraps up the license key in a nice little package
-     *
-     * @param array  $srcArray The array that needs to be turned into a license str
-     * @param string $keyType  The type of key to be wrapped (KEY=license key, REQUESTKEY=license request key)
-     *
-     * @return string Returns encrypted and formatted license key
-     **/
-    protected function wrapLicense($srcArray, $keyType = 'KEY')
-    {
-        // sort the variables
-        $begin = $this->pad($this->getBegin($keyType));
-        $end   = $this->pad($this->getEnd($keyType));
-
-        // encrypt the data
-        $str   = $this->encrypt($srcArray, $keyType);
-
-        // return the wrap
-        return $begin.PHP_EOL.wordwrap($str, $this->wrapto, PHP_EOL, 1).PHP_EOL.$end;
-    }
-
     /**
     * unwrapLicense
     *
@@ -1122,27 +900,5 @@ class License
         }
 
         return $a;
-    }
-
-    /**
-     * callHome
-     *
-     * calls the dial home server (your server) andvalidates the clients license
-     * with the info in the mysql db
-     *
-     * @param array  $data     Array that contains the info to be validated
-     * @param string $dialhost Host name of the server to be contacted
-     * @param string $dialpath Path of the script for the data to be sent to
-     * @param number $dialport Port Number to send the data through
-     *
-     * @return string Returns: the encrypted server validation result from the dial home call
-     *                       : SOCKET_FAILED    => socket failed to connect to the server
-     **/
-    protected function callHome($data, $dialhost, $dialpath, $dialport)
-    {
-        // post the data home
-        $data = $this->postData($dialhost, $dialpath, $data, $dialport);
-
-        return (empty($data['RESULT'])) ? 'SOCKET_FAILED' : $data['RESULT'];
     }
 }

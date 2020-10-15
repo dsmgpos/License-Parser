@@ -11,7 +11,7 @@
     "autoload": {
         "psr-4": {
             "": "src/",
-            "dslc\\": "dslc/"
+            "Dslc\\": "Dslc/"
         }
     },
     "require": {},
