@@ -1,0 +1,13 @@
+    name: Git Checkout
+
+    on: [push]
+
+    jobs:
+      build:
+        name: Check
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout
+            uses: actions/checkout@v1
+            with:
+              fetch-depth: 0
